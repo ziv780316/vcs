@@ -1,0 +1,63 @@
+#!/bin/bash
+
+msg_info ()
+{
+	msg=$1
+	echo "[vc info] $msg"
+}
+
+msg_error ()
+{
+	msg=$1
+	echo "[vc error] $msg"
+}
+
+msg_warn ()
+{
+	msg=$1
+	echo "[vc warn] $msg"
+}
+
+msg_info "arguments: $@"
+
+# use getopt to parse command line arguments
+options=$(getopt -o vhs: --long version,status: -- "$@")
+
+return_val=$?
+if [ $return_val -ne 0 ]; then
+	msg_error "parse command line arguments fail (return $return_val)"
+	exit 1
+fi
+
+
+msg_info "options: $options" # -- mean end of options, it will not process by eval set
+
+# convert options to $1, $2 ...
+eval set -- "$options" 
+
+while true; do
+	case "$1" in 
+	-h)
+		echo "help"
+		;;
+	-v|--version)
+		echo "$(git --version)"
+		;;
+	-s|--status)
+		shift 
+		file=$1
+		echo "query file '$file' status"
+		;;
+	--) 
+		# -- (end of options)
+		shift 
+		break
+		;;
+	*) 
+		msg_warn "unknown options '$1'"
+		;;
+	esac
+
+	shift # move $1 to next argument
+done
+
