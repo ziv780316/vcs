@@ -21,7 +21,9 @@ msg_warn ()
 
 commit_with_changelog ()
 {
-	echo "[Start]"
+	msg_info "start commit process"
+
+	# fetch user information
 	user_name=`git config --get user.name`
 	user_email=`git config --get user.email`
 	tempfile=`mktemp /tmp/vc.XXXXXXXX`
@@ -58,36 +60,82 @@ commit_with_changelog ()
 	vim $tempfile
 
 	# confirm commit
-	printf "[Confirm] commit (Y/N) ? "
+	printf "[confirm] commit (Y/N) ? "
 	read -n 1 response
 	if [ $response == "Y" -o $response == "y" ]; then
-		echo -e "\nCommit ..."
+		echo -e "\ncommit ..."
 		git commit -F $tempfile
 	else
-		echo -e "\nAbort"
+		echo -e "\nabort"
 	fi
 
 	# clean-up
 	rm $tempfile
 }
 
+query_file_status ()
+{
+	msg_info "start query status"
+	
+	file=$1
+	git status $1
+	if [ $? -ne 0 ]; then
+		msg_error "query '$file' status fail "
+	fi
+}
+
+checkout_file ()
+{
+	msg_info "check out '$file'"
+	
+	file=$1
+	git add $1
+
+	if [ $? -ne 0 ]; then
+		msg_error "check out '$file' fail "
+	fi
+}
+
+revert_file ()
+{
+	msg_info "revert '$file'"
+	
+	file=$1
+	git reset $1
+
+	if [ $? -ne 0 ]; then
+		msg_error "revert '$file' fail "
+	fi
+}
+
+query_file_change_log ()
+{
+	msg_info "start query change log"
+	
+	file=$1
+	git log $1
+	if [ $? -ne 0 ]; then
+		msg_error "query '$file' cnange log fail "
+	fi
+}
+
 msg_info "arguments: $@"
 
 # use getopt to parse command line arguments
-options=$(getopt -o vhs: --long version,status: -- "$@")
+options=$(getopt -o vhs:co:r:l: --long version,status:,commit,checkout:,revert:,log: -- "$@")
 
 return_val=$?
 if [ $return_val -ne 0 ]; then
 	msg_error "parse command line arguments fail (return $return_val)"
 fi
 
-
 msg_info "options: $options" # -- mean end of options, it will not process by eval set
 
 # set -- assign $options to $1, $2 ...
 eval set -- "$options" 
 
-while true; do
+eof_argument=false
+while [ !$eof_argument ]; do
 	case "$1" in 
 	-h)
 		echo "help"
@@ -98,19 +146,33 @@ while true; do
 	-s|--status)
 		shift 
 		file=$1
-		echo "query file '$file' status"
+		query_file_status $file
+		;;
+	-c|--commit)
+		commit_with_changelog 
+		;;
+	-o|--checkout)
+		shift 
+		file=$1
+		checkout_file $file
+		;;
+	-r|--revert)
+		shift 
+		file=$1
+		revert_file $file
+		;;
+	-l|--log)
+		shift 
+		file=$1
+		query_file_change_log $file
 		;;
 	--) 
 		# -- (end of options)
 		shift 
+		eof_argument=true
 		break
-		;;
-	*) 
-		msg_warn "unknown options '$1'"
 		;;
 	esac
 
 	shift # move $1 to next argument
 done
-
-commit_with_changelog 
