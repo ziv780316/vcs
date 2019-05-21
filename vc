@@ -77,8 +77,8 @@ query_file_status ()
 {
 	msg_info "start query status"
 	
-	file=$1
-	git status $file
+	file=$*
+	git status -s $file
 	if [ $? -ne 0 ]; then
 		msg_error "query '$file' status fail "
 	fi
@@ -88,7 +88,7 @@ add_file ()
 {
 	msg_info "add '$file'"
 	
-	file=$1
+	file=$*
 	git add $file
 
 	if [ $? -ne 0 ]; then
@@ -100,7 +100,7 @@ revert_file ()
 {
 	msg_info "revert '$file'"
 	
-	file=$1
+	file=$*
 	git reset $file
 
 	if [ $? -ne 0 ]; then
@@ -112,17 +112,52 @@ query_file_change_log ()
 {
 	msg_info "start query change log"
 	
-	file=$1
+	file=$*
 	git log $file
 	if [ $? -ne 0 ]; then
 		msg_error "query '$file' cnange log fail "
 	fi
 }
 
-msg_info "arguments: $@"
+show_help ()
+{
+	echo "-----------------------------"
+	echo "|            VCS            |"
+	echo "-----------------------------"
+	echo "[query status]"
+	echo "  vc -s|--status file1 file2"
+	echo ""
+	echo "[query log]"
+	echo "  vc -l|--log file1 file2"
+	echo ""
+	echo "[add file]"
+	echo "  vc -a|--add file1 file2"
+	echo ""
+	echo "[revert file]"
+	echo "  vc -r|--revert file1 file2"
+	echo ""
+	echo "[commit and edit change log]"
+	echo "  vc -c|--commit"
+}
 
-# use getopt to parse command line arguments
-options=$(getopt -o vhs:ca:r:l: --long version,status:,commit,add:,revert:,log: -- "$@")
+
+# $@ is array of arguments, $* is single string contain all arguments
+args="$@"
+
+# change -s file1 file2  ==>  -s "file1 file2"
+quote_args=`echo $args | sed 's/\(--\?[^- ]\+\) \([^-]\+\)$/\1 "\2"/g'`
+
+# change -s file1 file2 -h   ==>  -s "file1 file2" -h
+quote_args=`echo $quote_args | sed 's/\(--\?[^- ]\+\) \([^-]\+\) -/\1 "\2" -/g'`
+
+# assign quote_args to $@
+eval set -- "$quote_args" 
+
+msg_info "arguments: $args"
+msg_info "quote arguments: $quote_args"
+
+# use getopt to parse command line arguments, use "$@" in for loop will handle quote string
+options=$(getopt -o vhs:ca:r:l: --long version,help,status:,commit,add:,revert:,log: -- "$@")
 
 return_val=$?
 if [ $return_val -ne 0 ]; then
@@ -136,11 +171,13 @@ eval set -- "$options"
 
 eof_argument=false
 while [ !$eof_argument ]; do
-	case "$1" in 
+	option=$1
+	case "$option" in 
 	-h)
-		echo "help"
+		show_help
 		;;
 	-v|--version)
+		echo "vc 1.0"
 		echo "$(git --version)"
 		;;
 	-s|--status)

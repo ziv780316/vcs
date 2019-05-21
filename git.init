@@ -1,0 +1,13 @@
+#/bin/bash
+
+# user account
+git config --global user.name "ziv"
+git config --global user.email "<north780316@gamil.com>"
+
+# editor
+git config --global core.editor "vim"
+git config --global diff.tool "vimdiff"
+
+# display format
+git config --global color.ui "auto"
+
