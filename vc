@@ -78,21 +78,21 @@ query_file_status ()
 	msg_info "start query status"
 	
 	file=$1
-	git status $1
+	git status $file
 	if [ $? -ne 0 ]; then
 		msg_error "query '$file' status fail "
 	fi
 }
 
-checkout_file ()
+add_file ()
 {
-	msg_info "check out '$file'"
+	msg_info "add '$file'"
 	
 	file=$1
-	git add $1
+	git add $file
 
 	if [ $? -ne 0 ]; then
-		msg_error "check out '$file' fail "
+		msg_error "add '$file' fail "
 	fi
 }
 
@@ -101,7 +101,7 @@ revert_file ()
 	msg_info "revert '$file'"
 	
 	file=$1
-	git reset $1
+	git reset $file
 
 	if [ $? -ne 0 ]; then
 		msg_error "revert '$file' fail "
@@ -113,7 +113,7 @@ query_file_change_log ()
 	msg_info "start query change log"
 	
 	file=$1
-	git log $1
+	git log $file
 	if [ $? -ne 0 ]; then
 		msg_error "query '$file' cnange log fail "
 	fi
@@ -122,7 +122,7 @@ query_file_change_log ()
 msg_info "arguments: $@"
 
 # use getopt to parse command line arguments
-options=$(getopt -o vhs:co:r:l: --long version,status:,commit,checkout:,revert:,log: -- "$@")
+options=$(getopt -o vhs:ca:r:l: --long version,status:,commit,add:,revert:,log: -- "$@")
 
 return_val=$?
 if [ $return_val -ne 0 ]; then
@@ -151,10 +151,10 @@ while [ !$eof_argument ]; do
 	-c|--commit)
 		commit_with_changelog 
 		;;
-	-o|--checkout)
+	-a|--add)
 		shift 
 		file=$1
-		checkout_file $file
+		add_file $file
 		;;
 	-r|--revert)
 		shift 
