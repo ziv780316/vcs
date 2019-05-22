@@ -31,6 +31,9 @@ commit_with_changelog ()
 		msg_error "create tempfile fail"
 	fi
 
+	# fetch all local cached file (file by git add)
+	staged_files=`git diff --name-only --cached`
+
 	# redirect to tempfile and produce template
 	pid=$$ 
 	origin_fd_1_file=$(readlink /proc/$pid/fd/1)
@@ -49,6 +52,7 @@ commit_with_changelog ()
 	echo "[Description]"
 	echo ""
 	echo "[Commit Files]"
+	echo "$staged_files"
 	echo ""
 	exec 1>>$origin_fd_1_file
 	echo "redirect stdout from $tempfile --> $origin_fd_1_file"
@@ -65,6 +69,9 @@ commit_with_changelog ()
 	if [ $response == "Y" -o $response == "y" ]; then
 		echo -e "\ncommit ..."
 		git commit -F $tempfile
+
+		# push code to local branch (master) to remote repository (origin)
+		git push origin master
 	else
 		echo -e "\nabort"
 	fi
@@ -119,6 +126,22 @@ query_file_change_log ()
 	fi
 }
 
+sync_code ()
+{
+	msg_info "start sync code"
+	
+	file=$*
+	git checkout master
+	if [ $? -ne 0 ]; then
+		msg_error "change branch to master fail "
+	fi
+
+	git checkout $file
+	if [ $? -ne 0 ]; then
+		msg_error "sync '$file' fail "
+	fi
+}
+
 show_help ()
 {
 	echo "-----------------------------"
@@ -138,6 +161,9 @@ show_help ()
 	echo ""
 	echo "[commit and edit change log]"
 	echo "  vc -c|--commit"
+	echo ""
+	echo "[sync code]"
+	echo "  vc -y|--sync"
 }
 
 
@@ -157,7 +183,7 @@ msg_info "arguments: $args"
 msg_info "quote arguments: $quote_args"
 
 # use getopt to parse command line arguments, use "$@" in for loop will handle quote string
-options=$(getopt -o vhs:ca:r:l: --long version,help,status:,commit,add:,revert:,log: -- "$@")
+options=$(getopt -o vhs:ca:r:l:y: --long version,help,status:,commit,add:,revert:,log:,sync: -- "$@")
 
 return_val=$?
 if [ $return_val -ne 0 ]; then
@@ -202,6 +228,10 @@ while [ !$eof_argument ]; do
 		shift 
 		file=$1
 		query_file_change_log $file
+		;;
+	-y|--sync)
+		file=$1
+		sync_code $file
 		;;
 	--) 
 		# -- (end of options)
