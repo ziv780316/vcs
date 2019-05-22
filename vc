@@ -38,25 +38,28 @@ commit_with_changelog ()
 	pid=$$ 
 	origin_fd_1_file=$(readlink /proc/$pid/fd/1)
 	if [ $? -ne 0 ]; then
+		rm $tempfile
 		msg_error "readlink fail"
 	fi
 
 	echo "redirect PID=$pid stdout from $origin_fd_1_file --> $tempfile"
 	exec 1>$tempfile
 	if [ $? -ne 0 ]; then
+		rm $tempfile
 		msg_error "redirect $origin_fd_1_file --> $tempfile fail"
 	fi
-	echo "-------------------------------------------"
-	echo "user  = ${user_name}"
-	echo "email = ${user_email}"
+	commit_date=`date '+%Y/%m/%d %H:%M:%S'`
+	echo "$commit_date ${user_name}"
 	echo "[Description]"
 	echo ""
 	echo "[Commit Files]"
 	echo "$staged_files"
 	echo ""
+	echo "-------------------------------------------"
 	exec 1>>$origin_fd_1_file
 	echo "redirect stdout from $tempfile --> $origin_fd_1_file"
 	if [ $? -ne 0 ]; then
+		rm $tempfile
 		msg_error "redirect $tempfile --> $origin_fd_1_file fail "
 	fi
 
@@ -120,7 +123,7 @@ query_file_change_log ()
 	msg_info "start query change log"
 	
 	file=$*
-	git log $file
+	git log --pretty=oneline --abbrev-commit $file
 	if [ $? -ne 0 ]; then
 		msg_error "query '$file' cnange log fail "
 	fi
@@ -133,6 +136,35 @@ sync_code ()
 	git checkout remotes/origin/master $file
 	if [ $? -ne 0 ]; then
 		msg_error "sync '$file' fail "
+	fi
+}
+
+diff_files ()
+{
+	msg_info "start diff file"
+
+	vimdiff_version=`vimdiff --version`
+	if [ $? -ne 0 ]; then
+		msg_error "cannot find vimdiff"
+	fi
+
+	num_args=$#
+	if [ $num_args -eq 1 ]; then
+		file=$1
+		git difftool --no-prompt --tool=vimdiff $file
+		if [ $? -ne 0 ]; then
+			msg_error "diff '$file' fail "
+		fi
+	elif [ $num_args -eq 3 ]; then
+		file=$1
+		ver1=$2
+		ver2=$3
+		git difftool --no-prompt --tool=vimdiff $ver1 $ver2 -- $file
+		if [ $? -ne 0 ]; then
+	 		msg_error "diff '$file' fail "
+		fi
+	else
+		msg_error "invalid diff arguments"
 	fi
 }
 
@@ -177,7 +209,7 @@ msg_info "arguments: $args"
 msg_info "quote arguments: $quote_args"
 
 # use getopt to parse command line arguments, use "$@" in for loop will handle quote string
-options=$(getopt -o vhs:ca:r:l:y: --long version,help,status:,commit,add:,revert:,log:,sync: -- "$@")
+options=$(getopt -o vhs:ca:r:l:y:d: --long version,help,status:,commit,add:,revert:,log:,sync:,diff: -- "$@")
 
 return_val=$?
 if [ $return_val -ne 0 ]; then
@@ -227,6 +259,11 @@ while [ !$eof_argument ]; do
 		shift
 		file=$1
 		sync_code $file
+		;;
+	-d|--diff)
+		shift
+		file=$1
+		diff_files $file
 		;;
 	--) 
 		# -- (end of options)
