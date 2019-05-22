@@ -130,13 +130,7 @@ sync_code ()
 {
 	msg_info "start sync code"
 	
-	file=$*
-	git checkout master
-	if [ $? -ne 0 ]; then
-		msg_error "change branch to master fail "
-	fi
-
-	git checkout $file
+	git checkout remotes/origin/master $file
 	if [ $? -ne 0 ]; then
 		msg_error "sync '$file' fail "
 	fi
@@ -230,6 +224,7 @@ while [ !$eof_argument ]; do
 		query_file_change_log $file
 		;;
 	-y|--sync)
+		shift
 		file=$1
 		sync_code $file
 		;;
