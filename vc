@@ -96,9 +96,9 @@ query_file_status ()
 
 add_file ()
 {
-	msg_info "add '$file'"
-	
 	file=$*
+	msg_info "add file '$file'"
+	
 	git add $file
 
 	if [ $? -ne 0 ]; then
@@ -132,11 +132,30 @@ query_file_change_log ()
 sync_code ()
 {
 	msg_info "start sync code"
+
+	file=$1
 	
-	git checkout remotes/origin/master $file
+	origin_branch=`git rev-parse --abbrev-ref HEAD`
+	if [ $? -ne 0 ]; then
+		msg_error "get current branch fail "
+	fi
+
+	echo "switch branch from '$origin_branch' --> 'remotes/origin/master'"
+	git checkout -q remotes/origin/master 
+	if [ $? -ne 0 ]; then
+		msg_error "switch branch fail "
+	fi
+
+	git checkout $file
 	if [ $? -ne 0 ]; then
 		msg_error "sync '$file' fail "
 	fi
+
+	git checkout -q $origin_branch
+	if [ $? -ne 0 ]; then
+		msg_error "switch branch fail "
+	fi
+	echo "switch branch from 'remotes/origin/master' --> '$origin_branch' "
 }
 
 diff_files ()
@@ -157,14 +176,34 @@ diff_files ()
 		fi
 	elif [ $num_args -eq 3 ]; then
 		file=$1
-		ver1=$2
-		ver2=$3
-		git difftool --no-prompt --tool=vimdiff $ver1 $ver2 -- $file
+		commit_id1=$2
+		commit_id2=$3
+		git difftool --no-prompt --tool=vimdiff $commit_id1 $commit_id2 -- $file
 		if [ $? -ne 0 ]; then
 	 		msg_error "diff '$file' fail "
 		fi
 	else
 		msg_error "invalid diff arguments"
+	fi
+}
+
+fetch_code ()
+{
+	msg_info "start fetch code"
+	
+	num_args=$#
+	if [ $num_args -eq 2 ]; then
+		file=$1
+		commit_id=$2
+		dump_name="${file}#${commit_id}"
+		git show $commit_id:$file > $dump_name
+		if [ $? -ne 0 ]; then
+			msg_error "fetch '$file (id=$commit_id)' fail"
+		else
+			msg_info "dump file '$dump_name'"
+		fi
+	else
+		msg_error "invalid fetch arguments"
 	fi
 }
 
@@ -174,22 +213,31 @@ show_help ()
 	echo "|            VCS            |"
 	echo "-----------------------------"
 	echo "[query status]"
-	echo "  vc -s|--status file1 file2"
+	echo "  vc -s|--status file1 file2 ..."
 	echo ""
 	echo "[query log]"
-	echo "  vc -l|--log file1 file2"
+	echo "  vc -l|--log file1 file2 ..."
 	echo ""
 	echo "[add file]"
-	echo "  vc -a|--add file1 file2"
+	echo "  vc -a|--add file1 file2 ..."
 	echo ""
 	echo "[revert file]"
-	echo "  vc -r|--revert file1 file2"
+	echo "  vc -r|--revert file1 file2 ..."
 	echo ""
 	echo "[commit and edit change log]"
 	echo "  vc -c|--commit"
 	echo ""
 	echo "[sync code]"
-	echo "  vc -y|--sync"
+	echo "  vc -y|--sync file"
+	echo "  vc -y|--sync directory"
+	echo ""
+	echo "[diff file]"
+	echo "  vc -d|--diff file"
+	echo "  vc -d|--diff file commit_id1 commit_id2"
+	echo "  vc -d|--diff directory"
+	echo ""
+	echo "[fetch code]"
+	echo "  vc -f|--diff file commit_id1"
 }
 
 
@@ -209,7 +257,7 @@ msg_info "arguments: $args"
 msg_info "quote arguments: $quote_args"
 
 # use getopt to parse command line arguments, use "$@" in for loop will handle quote string
-options=$(getopt -o vhs:ca:r:l:y:d: --long version,help,status:,commit,add:,revert:,log:,sync:,diff: -- "$@")
+options=$(getopt -o vhs:ca:r:l:y:d:f: --long version,help,status:,commit,add:,revert:,log:,sync:,diff:,fetch: -- "$@")
 
 return_val=$?
 if [ $return_val -ne 0 ]; then
@@ -234,36 +282,41 @@ while [ !$eof_argument ]; do
 		;;
 	-s|--status)
 		shift 
-		file=$1
-		query_file_status $file
+		args=$1
+		query_file_status $args
 		;;
 	-c|--commit)
 		commit_with_changelog 
 		;;
 	-a|--add)
 		shift 
-		file=$1
-		add_file $file
+		args=$1
+		add_file $args
 		;;
 	-r|--revert)
 		shift 
-		file=$1
-		revert_file $file
+		args=$1
+		revert_file $args
 		;;
 	-l|--log)
 		shift 
-		file=$1
-		query_file_change_log $file
+		args=$1
+		query_file_change_log $args
 		;;
 	-y|--sync)
 		shift
-		file=$1
-		sync_code $file
+		args=$1
+		sync_code $args
 		;;
 	-d|--diff)
 		shift
-		file=$1
-		diff_files $file
+		args=$1
+		diff_files $args
+		;;
+	-f|--fetch)
+		shift
+		args=$1
+		fetch_code $args
 		;;
 	--) 
 		# -- (end of options)
