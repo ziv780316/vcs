@@ -31,8 +31,8 @@ commit_with_changelog ()
 		msg_error "create tempfile fail"
 	fi
 
-	# fetch all local cached file (file by git add)
-	staged_files=`git diff --name-only --cached`
+	# fetch all local staged file (file by git add)
+	staged_files=`git diff --name-only --staged`
 
 	# redirect to tempfile and produce template
 	pid=$$ 
@@ -141,6 +141,7 @@ sync_code ()
 	fi
 
 	echo "switch branch from '$origin_branch' --> 'remotes/origin/master'"
+	
 	git checkout -q remotes/origin/master 
 	if [ $? -ne 0 ]; then
 		msg_error "switch branch fail "
@@ -187,9 +188,25 @@ diff_files ()
 	fi
 }
 
-fetch_code ()
+show_conflict_list ()
 {
-	msg_info "start fetch code"
+	msg_info "start show conflict list"
+
+	dir=$1
+	test -d $dir
+	if [ $? -eq 0 ]; then
+		git diff --name-only $dir
+		if [ $? -ne 0 ]; then
+			msg_error "diff '$dir' fail "
+		fi
+	else
+		msg_error "invalid directory '$dir'"
+	fi
+}
+
+get_code ()
+{
+	msg_info "start get code"
 	
 	num_args=$#
 	if [ $num_args -eq 2 ]; then
@@ -198,12 +215,13 @@ fetch_code ()
 		dump_name="${file}#${commit_id}"
 		git show $commit_id:$file > $dump_name
 		if [ $? -ne 0 ]; then
-			msg_error "fetch '$file (id=$commit_id)' fail"
+			rm -f $dump_name
+			msg_error "get '$file (id=$commit_id)' fail"
 		else
 			msg_info "dump file '$dump_name'"
 		fi
 	else
-		msg_error "invalid fetch arguments"
+		msg_error "invalid get arguments"
 	fi
 }
 
@@ -236,8 +254,11 @@ show_help ()
 	echo "  vc -d|--diff file commit_id1 commit_id2"
 	echo "  vc -d|--diff directory"
 	echo ""
-	echo "[fetch code]"
-	echo "  vc -f|--diff file commit_id1"
+	echo "[show conflict]"
+	echo "  vc -c|--conflict directory"
+	echo ""
+	echo "[get code]"
+	echo "  vc -g|--get file commit_id (dump to file#commit_id)"
 }
 
 
@@ -257,7 +278,7 @@ msg_info "arguments: $args"
 msg_info "quote arguments: $quote_args"
 
 # use getopt to parse command line arguments, use "$@" in for loop will handle quote string
-options=$(getopt -o vhs:ca:r:l:y:d:f: --long version,help,status:,commit,add:,revert:,log:,sync:,diff:,fetch: -- "$@")
+options=$(getopt -o vhs:ca:r:l:y:d:g:f: --long version,help,status:,commit,add:,revert:,log:,sync:,diff:,conflict:,get: -- "$@")
 
 return_val=$?
 if [ $return_val -ne 0 ]; then
@@ -313,10 +334,15 @@ while [ !$eof_argument ]; do
 		args=$1
 		diff_files $args
 		;;
-	-f|--fetch)
+	-f|--conflict)
 		shift
 		args=$1
-		fetch_code $args
+		show_conflict_list $args
+		;;
+	-g|--get)
+		shift
+		args=$1
+		get_code $args
 		;;
 	--) 
 		# -- (end of options)
