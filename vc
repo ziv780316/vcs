@@ -134,14 +134,14 @@ sync_code ()
 	msg_info "start sync code"
 
 	file=$1
-	
+
 	origin_branch=`git rev-parse --abbrev-ref HEAD`
 	if [ $? -ne 0 ]; then
 		msg_error "get current branch fail "
 	fi
 
 	echo "switch branch from '$origin_branch' --> 'remotes/origin/master'"
-	
+	
 	git checkout -q remotes/origin/master 
 	if [ $? -ne 0 ]; then
 		msg_error "switch branch fail "
@@ -255,7 +255,7 @@ show_help ()
 	echo "  vc -d|--diff directory"
 	echo ""
 	echo "[show conflict]"
-	echo "  vc -c|--conflict directory"
+	echo "  vc -f|--conflict directory"
 	echo ""
 	echo "[get code]"
 	echo "  vc -g|--get file commit_id (dump to file#commit_id)"
