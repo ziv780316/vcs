@@ -1,5 +1,7 @@
 #!/bin/bash
 
+remote_branch="origin/master"
+
 msg_info ()
 {
 	msg=$1
@@ -23,7 +25,7 @@ commit_with_changelog ()
 {
 	msg_info "start commit process"
 
-	# fetch user information
+	# get user information
 	user_name=`git config --get user.name`
 	user_email=`git config --get user.email`
 	tempfile=`mktemp /tmp/vc.XXXXXXXX`
@@ -31,7 +33,7 @@ commit_with_changelog ()
 		msg_error "create tempfile fail"
 	fi
 
-	# fetch all local staged file (file by git add)
+	# get all local staged file (file by git add)
 	staged_files=`git diff --name-only --staged`
 
 	# redirect to tempfile and produce template
@@ -122,14 +124,37 @@ query_file_change_log ()
 {
 	msg_info "start query change log"
 	
+	# get branch head of remote repositories
+	git fetch
+	if [ $? -ne 0 ]; then
+		msg_error "get fetch fail "
+	fi
+
 	file=$*
-	git log --pretty=oneline --abbrev-commit $file
+	git log --pretty=oneline --abbrev-commit $remote_branch -- $file
 	if [ $? -ne 0 ]; then
 		msg_error "query '$file' cnange log fail "
 	fi
 }
 
-sync_code ()
+update_exist_code ()
+{
+	msg_info "update exist code"
+
+	# get branch head of remote repositories
+	git fetch
+	if [ $? -ne 0 ]; then
+		msg_error "get fetch fail "
+	fi
+
+	# update (merge FETCH_HEAD)
+	git merge origin/master
+	if [ $? -ne 0 ]; then
+		msg_error "merge FETCH_HEAD fail "
+	fi
+}
+
+sync_missing_code ()
 {
 	msg_info "start sync code"
 
@@ -168,10 +193,16 @@ diff_files ()
 		msg_error "cannot find vimdiff"
 	fi
 
+	# get branch head of remote repositories
+	git fetch
+	if [ $? -ne 0 ]; then
+		msg_error "get fetch fail "
+	fi
+
 	num_args=$#
 	if [ $num_args -eq 1 ]; then
 		file=$1
-		git difftool --no-prompt --tool=vimdiff $file
+		git difftool --no-prompt --tool=vimdiff $remote_branch -- $file
 		if [ $? -ne 0 ]; then
 			msg_error "diff '$file' fail "
 		fi
@@ -195,7 +226,7 @@ show_conflict_list ()
 	dir=$1
 	test -d $dir
 	if [ $? -eq 0 ]; then
-		git diff --name-only $dir
+		git diff --name-only $remote_branch -- $dir
 		if [ $? -ne 0 ]; then
 			msg_error "diff '$dir' fail "
 		fi
@@ -207,6 +238,12 @@ show_conflict_list ()
 get_code ()
 {
 	msg_info "start get code"
+
+	# get branch head of remote repositories
+	git fetch
+	if [ $? -ne 0 ]; then
+		msg_error "get fetch fail "
+	fi
 	
 	num_args=$#
 	if [ $num_args -eq 2 ]; then
@@ -278,7 +315,7 @@ msg_info "arguments: $args"
 msg_info "quote arguments: $quote_args"
 
 # use getopt to parse command line arguments, use "$@" in for loop will handle quote string
-options=$(getopt -o vhs:ca:r:l:y:d:g:f: --long version,help,status:,commit,add:,revert:,log:,sync:,diff:,conflict:,get: -- "$@")
+options=$(getopt -o vhs:ca:r:l:yd:g:f: --long version,help,status:,commit,add:,revert:,log:,sync:,diff:,conflict:,get: -- "$@")
 
 return_val=$?
 if [ $return_val -ne 0 ]; then
@@ -325,9 +362,7 @@ while [ !$eof_argument ]; do
 		query_file_change_log $args
 		;;
 	-y|--sync)
-		shift
-		args=$1
-		sync_code $args
+		update_exist_code 
 		;;
 	-d|--diff)
 		shift
