@@ -75,7 +75,7 @@ commit_with_changelog ()
 		echo -e "\ncommit ..."
 		git commit -F $tempfile
 
-		# push code to local branch (master) to remote repository (origin)
+		# push file to local branch (master) to remote repository (origin)
 		git push origin master
 	else
 		echo -e "\nabort"
@@ -108,15 +108,27 @@ add_file ()
 	fi
 }
 
-revert_file ()
+reset_file ()
 {
-	msg_info "revert '$file'"
+	msg_info "reset '$file'"
 	
 	file=$*
-	git reset $file
+	git reset -- $file
 
 	if [ $? -ne 0 ]; then
-		msg_error "revert '$file' fail "
+		msg_error "reset '$file' fail "
+	fi
+}
+
+deleted_file ()
+{
+	msg_info "delete '$file'"
+	
+	file=$*
+	git rm -- $file
+
+	if [ $? -ne 0 ]; then
+		msg_error "delete '$file' fail "
 	fi
 }
 
@@ -137,9 +149,9 @@ query_file_change_log ()
 	fi
 }
 
-update_exist_code ()
+update_all_file ()
 {
-	msg_info "update exist code"
+	msg_info "update all file"
 
 	# get branch head of remote repositories
 	git fetch
@@ -154,34 +166,49 @@ update_exist_code ()
 	fi
 }
 
-sync_missing_code ()
+update_single_file ()
 {
-	msg_info "start sync code"
-
 	file=$1
+	msg_info "update file '$file'"
 
-	origin_branch=`git rev-parse --abbrev-ref HEAD`
+	# get branch head of remote repositories
+	git fetch
 	if [ $? -ne 0 ]; then
-		msg_error "get current branch fail "
+		msg_error "get fetch fail "
+	fi
+}
+
+get_missing_file ()
+{
+	local_branch=`git rev-parse --abbrev-ref HEAD`
+	if [ $? -ne 0 ]; then
+		msg_error "get local branch fail "
 	fi
 
-	echo "switch branch from '$origin_branch' --> 'remotes/origin/master'"
-	
-	git checkout -q remotes/origin/master 
+	msg_info "start merge file from branch $remote_branch to $local_branch"
+
+	# get branch head of remote repositories
+	git fetch
 	if [ $? -ne 0 ]; then
-		msg_error "switch branch fail "
+		msg_error "get fetch fail "
 	fi
 
-	git checkout $file
-	if [ $? -ne 0 ]; then
-		msg_error "sync '$file' fail "
+	deleted_files=`git status --short | grep -E '^ D' | sed 's/^ D\s\+//'` # only sync "^ D" not "^D" (later is user use git rm)
+	if [ $? -eq 0 ]; then
+		for file in $deleted_files; do
+			printf "[confirm] download mssing file '$file' (Y/N) ? "
+			read -n 1 response
+			if [ $response == "Y" -o $response == "y" ]; then
+				echo -e "\ndownload '$file' ..."
+				git checkout $remote_branch -- $file
+				if [ $? -ne 0 ]; then
+					msg_error "checkout file fail "
+				fi
+			else
+				echo ""
+			fi
+		done
 	fi
-
-	git checkout -q $origin_branch
-	if [ $? -ne 0 ]; then
-		msg_error "switch branch fail "
-	fi
-	echo "switch branch from 'remotes/origin/master' --> '$origin_branch' "
 }
 
 diff_files ()
@@ -229,9 +256,9 @@ show_conflict_list ()
 	fi
 }
 
-get_code ()
+get_file ()
 {
-	msg_info "start get code"
+	msg_info "start get file"
 
 	# get branch head of remote repositories
 	git fetch
@@ -256,14 +283,14 @@ get_code ()
 	fi
 }
 
-merge_code ()
+merge_file ()
 {
 	local_branch=`git rev-parse --abbrev-ref HEAD`
 	if [ $? -ne 0 ]; then
 		msg_error "get local branch fail "
 	fi
 
-	msg_info "start merge code from branch $remote_branch to $local_branch"
+	msg_info "start merge file from branch $remote_branch to $local_branch"
 
 	# get branch head of remote repositories
 	git fetch
@@ -292,15 +319,14 @@ show_help ()
 	echo "[add file]"
 	echo "  vc -a|--add file1 file2 ..."
 	echo ""
-	echo "[revert file]"
-	echo "  vc -r|--revert file1 file2 ..."
+	echo "[reset file]"
+	echo "  vc -r|--reset file1 file2 ..."
 	echo ""
 	echo "[commit and edit change log]"
 	echo "  vc -c|--commit"
 	echo ""
-	echo "[sync code]"
-	echo "  vc -s|--sync file"
-	echo "  vc -s|--sync directory"
+	echo "[sync file]"
+	echo "  vc -s|--sync"
 	echo ""
 	echo "[diff file]"
 	echo "  vc -d|--diff file"
@@ -310,11 +336,14 @@ show_help ()
 	echo "[show conflict]"
 	echo "  vc -f|--conflict"
 	echo ""
-	echo "[get code]"
+	echo "[get file]"
 	echo "  vc -g|--get file commit_id (dump to file#commit_id)"
 	echo ""
-	echo "[merge code]"
+	echo "[merge file]"
 	echo "  vc -m|--merge file (replace local file by file on remote branch)"
+	echo ""
+	echo "[delete file]"
+	echo "  vc -x|--delete file"
 }
 
 
@@ -327,14 +356,14 @@ quote_args=`echo $args | sed 's/\(--\?[^- ]\+\) \([^-]\+\)$/\1 "\2"/g'`
 # change -s file1 file2 -h   ==>  -s "file1 file2" -h
 quote_args=`echo $quote_args | sed 's/\(--\?[^- ]\+\) \([^-]\+\) -/\1 "\2" -/g'`
 
-# assign quote_args to $@
+# assign quote_args to $@, and set will assign each arg to $1, $2 ...
 eval set -- "$quote_args" 
 
 msg_info "arguments: $args"
 msg_info "quote arguments: $quote_args"
 
 # use getopt to parse command line arguments, use "$@" in for loop will handle quote string
-options=$(getopt -o vht:ca:r:l:sd:g:fm: --long version,help,status:,commit,add:,revert:,log:,sync:,diff:,conflict,get:,merge: -- "$@")
+options=$(getopt -o vht:ca:r:l:sd:g:fm:u:x: --long version,help,status:,commit,add:,reset:,log:,sync,diff:,conflict,get:,merge:,update:,delete: -- "$@")
 
 return_val=$?
 if [ $return_val -ne 0 ]; then
@@ -370,10 +399,10 @@ while [ !$eof_argument ]; do
 		args=$1
 		add_file $args
 		;;
-	-r|--revert)
+	-r|--reset)
 		shift 
 		args=$1
-		revert_file $args
+		reset_file $args
 		;;
 	-l|--log)
 		shift 
@@ -381,7 +410,13 @@ while [ !$eof_argument ]; do
 		query_file_change_log $args
 		;;
 	-s|--sync)
-		update_exist_code 
+		update_all_file 
+		get_missing_file
+		;;
+	-u|--update)
+		shift
+		args=$1
+		update_single_file $args
 		;;
 	-d|--diff)
 		shift
@@ -394,12 +429,17 @@ while [ !$eof_argument ]; do
 	-g|--get)
 		shift
 		args=$1
-		get_code $args
+		get_file $args
 		;;
 	-m|--merge)
 		shift
 		args=$1
-		merge_code $args
+		merge_file $args
+		;;
+	-x|--delete)
+		shift
+		args=$1
+		deleted_file $args
 		;;
 	--) 
 		# -- (end of options)
