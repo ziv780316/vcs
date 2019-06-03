@@ -223,15 +223,9 @@ show_conflict_list ()
 {
 	msg_info "start show conflict list"
 
-	dir=$1
-	test -d $dir
-	if [ $? -eq 0 ]; then
-		git diff --name-only $remote_branch -- $dir
-		if [ $? -ne 0 ]; then
-			msg_error "diff '$dir' fail "
-		fi
-	else
-		msg_error "invalid directory '$dir'"
+	git diff --name-only $remote_branch -- $dir
+	if [ $? -ne 0 ]; then
+		msg_error "diff '$dir' fail "
 	fi
 }
 
@@ -262,13 +256,35 @@ get_code ()
 	fi
 }
 
+merge_code ()
+{
+	local_branch=`git rev-parse --abbrev-ref HEAD`
+	if [ $? -ne 0 ]; then
+		msg_error "get local branch fail "
+	fi
+
+	msg_info "start merge code from branch $remote_branch to $local_branch"
+
+	# get branch head of remote repositories
+	git fetch
+	if [ $? -ne 0 ]; then
+		msg_error "get fetch fail "
+	fi
+
+	file=$1
+	git checkout $remote_branch -- $file
+	if [ $? -ne 0 ]; then
+		msg_error "checkout file fail "
+	fi
+}
+
 show_help ()
 {
 	echo "-----------------------------"
 	echo "|            VCS            |"
 	echo "-----------------------------"
 	echo "[query status]"
-	echo "  vc -s|--status file1 file2 ..."
+	echo "  vc -t|--status file1 file2 ..."
 	echo ""
 	echo "[query log]"
 	echo "  vc -l|--log file1 file2 ..."
@@ -283,8 +299,8 @@ show_help ()
 	echo "  vc -c|--commit"
 	echo ""
 	echo "[sync code]"
-	echo "  vc -y|--sync file"
-	echo "  vc -y|--sync directory"
+	echo "  vc -s|--sync file"
+	echo "  vc -s|--sync directory"
 	echo ""
 	echo "[diff file]"
 	echo "  vc -d|--diff file"
@@ -292,7 +308,7 @@ show_help ()
 	echo "  vc -d|--diff directory"
 	echo ""
 	echo "[show conflict]"
-	echo "  vc -f|--conflict directory"
+	echo "  vc -f|--conflict"
 	echo ""
 	echo "[get code]"
 	echo "  vc -g|--get file commit_id (dump to file#commit_id)"
@@ -315,7 +331,7 @@ msg_info "arguments: $args"
 msg_info "quote arguments: $quote_args"
 
 # use getopt to parse command line arguments, use "$@" in for loop will handle quote string
-options=$(getopt -o vhs:ca:r:l:yd:g:f: --long version,help,status:,commit,add:,revert:,log:,sync:,diff:,conflict:,get: -- "$@")
+options=$(getopt -o vht:ca:r:l:sd:g:fm: --long version,help,status:,commit,add:,revert:,log:,sync:,diff:,conflict,get:,merge: -- "$@")
 
 return_val=$?
 if [ $return_val -ne 0 ]; then
@@ -338,7 +354,7 @@ while [ !$eof_argument ]; do
 		echo "vc 1.0"
 		echo "$(git --version)"
 		;;
-	-s|--status)
+	-t|--status)
 		shift 
 		args=$1
 		query_file_status $args
@@ -361,7 +377,7 @@ while [ !$eof_argument ]; do
 		args=$1
 		query_file_change_log $args
 		;;
-	-y|--sync)
+	-s|--sync)
 		update_exist_code 
 		;;
 	-d|--diff)
@@ -370,14 +386,17 @@ while [ !$eof_argument ]; do
 		diff_files $args
 		;;
 	-f|--conflict)
-		shift
-		args=$1
-		show_conflict_list $args
+		show_conflict_list 
 		;;
 	-g|--get)
 		shift
 		args=$1
 		get_code $args
+		;;
+	-m|--merge)
+		shift
+		args=$1
+		merge_code $args
 		;;
 	--) 
 		# -- (end of options)
