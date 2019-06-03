@@ -312,6 +312,9 @@ show_help ()
 	echo ""
 	echo "[get code]"
 	echo "  vc -g|--get file commit_id (dump to file#commit_id)"
+	echo ""
+	echo "[merge code]"
+	echo "  vc -m|--merge file (replace local file by file on remote branch)"
 }
 
 
