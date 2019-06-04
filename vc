@@ -2,6 +2,11 @@
 
 remote_branch="origin/master"
 
+debug=false
+if [ "$VC_DEBUG_INFO" != "" ]; then
+	debug=true
+fi
+
 msg_info ()
 {
 	msg=$1
@@ -44,14 +49,15 @@ commit_with_changelog ()
 		msg_error "readlink fail"
 	fi
 
-	echo "redirect PID=$pid stdout from $origin_fd_1_file --> $tempfile"
+	if $debug; then
+		echo "redirect PID=$pid stdout from $origin_fd_1_file --> $tempfile"
+	fi
+
 	exec 1>$tempfile
 	if [ $? -ne 0 ]; then
 		rm $tempfile
 		msg_error "redirect $origin_fd_1_file --> $tempfile fail"
 	fi
-	commit_date=`date '+%Y/%m/%d %H:%M:%S'`
-	echo "$commit_date ${user_name}"
 	echo "[Description]"
 	echo ""
 	echo "[Commit Files]"
@@ -59,7 +65,9 @@ commit_with_changelog ()
 	echo ""
 	echo "-------------------------------------------"
 	exec 1>>$origin_fd_1_file
-	echo "redirect stdout from $tempfile --> $origin_fd_1_file"
+	if $debug; then
+		echo "redirect stdout from $tempfile --> $origin_fd_1_file"
+	fi
 	if [ $? -ne 0 ]; then
 		rm $tempfile
 		msg_error "redirect $tempfile --> $origin_fd_1_file fail "
@@ -90,7 +98,7 @@ query_file_status ()
 	msg_info "start query status"
 	
 	file=$*
-	git status -s $file
+	git status --untracked-file=no -s $file
 	if [ $? -ne 0 ]; then
 		msg_error "query '$file' status fail "
 	fi
@@ -136,14 +144,8 @@ query_file_change_log ()
 {
 	msg_info "start query change log"
 	
-	# get branch head of remote repositories
-	git fetch
-	if [ $? -ne 0 ]; then
-		msg_error "get fetch fail "
-	fi
-
 	file=$*
-	git log --pretty=oneline --abbrev-commit $remote_branch -- $file
+	git log --date=iso --abbrev-commit --pretty=format:"%h [%an] %ad %s" $remote_branch -- $file
 	if [ $? -ne 0 ]; then
 		msg_error "query '$file' cnange log fail "
 	fi
@@ -152,12 +154,6 @@ query_file_change_log ()
 update_all_file ()
 {
 	msg_info "update all file"
-
-	# get branch head of remote repositories
-	git fetch
-	if [ $? -ne 0 ]; then
-		msg_error "get fetch fail "
-	fi
 
 	# update (merge FETCH_HEAD)
 	git merge origin/master
@@ -170,12 +166,6 @@ update_single_file ()
 {
 	file=$1
 	msg_info "update file '$file'"
-
-	# get branch head of remote repositories
-	git fetch
-	if [ $? -ne 0 ]; then
-		msg_error "get fetch fail "
-	fi
 }
 
 get_missing_file ()
@@ -186,12 +176,6 @@ get_missing_file ()
 	fi
 
 	msg_info "start merge file from branch $remote_branch to $local_branch"
-
-	# get branch head of remote repositories
-	git fetch
-	if [ $? -ne 0 ]; then
-		msg_error "get fetch fail "
-	fi
 
 	deleted_files=`git status --short | grep -E '^ D' | sed 's/^ D\s\+//'` # only sync "^ D" not "^D" (later is user use git rm)
 	if [ $? -eq 0 ]; then
@@ -220,12 +204,6 @@ diff_files ()
 		msg_error "cannot find vimdiff"
 	fi
 
-	# get branch head of remote repositories
-	git fetch
-	if [ $? -ne 0 ]; then
-		msg_error "get fetch fail "
-	fi
-
 	num_args=$#
 	if [ $num_args -eq 1 ]; then
 		file=$1
@@ -250,6 +228,7 @@ show_conflict_list ()
 {
 	msg_info "start show conflict list"
 
+	dir=`pwd`
 	git diff --name-only $remote_branch -- $dir
 	if [ $? -ne 0 ]; then
 		msg_error "diff '$dir' fail "
@@ -260,12 +239,6 @@ get_file ()
 {
 	msg_info "start get file"
 
-	# get branch head of remote repositories
-	git fetch
-	if [ $? -ne 0 ]; then
-		msg_error "get fetch fail "
-	fi
-	
 	num_args=$#
 	if [ $num_args -eq 2 ]; then
 		file=$1
@@ -292,12 +265,6 @@ merge_file ()
 
 	msg_info "start merge file from branch $remote_branch to $local_branch"
 
-	# get branch head of remote repositories
-	git fetch
-	if [ $? -ne 0 ]; then
-		msg_error "get fetch fail "
-	fi
-
 	file=$1
 	git checkout $remote_branch -- $file
 	if [ $? -ne 0 ]; then
@@ -305,22 +272,33 @@ merge_file ()
 	fi
 }
 
+fetch_remote_info ()
+{
+	# get branch head of remote repositories
+	git fetch
+	if [ $? -ne 0 ]; then
+		msg_error "get fetch fail "
+	fi
+
+}
+
+
 show_help ()
 {
 	echo "-----------------------------"
 	echo "|            VCS            |"
 	echo "-----------------------------"
 	echo "[query status]"
-	echo "  vc -t|--status file1 file2 ..."
+	echo "  vc -t|--status file ..."
 	echo ""
 	echo "[query log]"
-	echo "  vc -l|--log file1 file2 ..."
+	echo "  vc -l|--log file ..."
 	echo ""
 	echo "[add file]"
-	echo "  vc -a|--add file1 file2 ..."
+	echo "  vc -a|--add file ..."
 	echo ""
 	echo "[reset file]"
-	echo "  vc -r|--reset file1 file2 ..."
+	echo "  vc -r|--reset file ..."
 	echo ""
 	echo "[commit and edit change log]"
 	echo "  vc -c|--commit"
@@ -331,7 +309,6 @@ show_help ()
 	echo "[diff file]"
 	echo "  vc -d|--diff file"
 	echo "  vc -d|--diff file commit_id1 commit_id2"
-	echo "  vc -d|--diff directory"
 	echo ""
 	echo "[show conflict]"
 	echo "  vc -f|--conflict"
@@ -340,12 +317,18 @@ show_help ()
 	echo "  vc -g|--get file commit_id (dump to file#commit_id)"
 	echo ""
 	echo "[merge file]"
-	echo "  vc -m|--merge file (replace local file by file on remote branch)"
+	echo "  vc -m|--merge file (replace local file by remote branch file)"
 	echo ""
 	echo "[delete file]"
 	echo "  vc -x|--delete file"
 }
 
+# fetch latest remote branch information
+if [ $# -eq 0 ]; then
+	echo "fetch remote branch information ..."
+	fetch_remote_info
+	exit 0
+fi
 
 # $@ is array of arguments, $* is single string contain all arguments
 args="$@"
@@ -359,8 +342,10 @@ quote_args=`echo $quote_args | sed 's/\(--\?[^- ]\+\) \([^-]\+\) -/\1 "\2" -/g'`
 # assign quote_args to $@, and set will assign each arg to $1, $2 ...
 eval set -- "$quote_args" 
 
-msg_info "arguments: $args"
-msg_info "quote arguments: $quote_args"
+if $debug; then
+	msg_info "arguments: $args"
+	msg_info "quote arguments: $quote_args"
+fi
 
 # use getopt to parse command line arguments, use "$@" in for loop will handle quote string
 options=$(getopt -o vht:ca:r:l:sd:g:fm:u:x: --long version,help,status:,commit,add:,reset:,log:,sync,diff:,conflict,get:,merge:,update:,delete: -- "$@")
@@ -370,7 +355,9 @@ if [ $return_val -ne 0 ]; then
 	msg_error "parse command line arguments fail (return $return_val)"
 fi
 
-msg_info "options: $options" # -- mean end of options, it will not process by eval set
+if $debug; then
+	msg_info "options: $options" # -- mean end of options, it will not process by eval set
+fi
 
 # set -- assign $options to $1, $2 ...
 eval set -- "$options" 
