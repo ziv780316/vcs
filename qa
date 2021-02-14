@@ -1,0 +1,213 @@
+#!/usr/bin/ruby
+
+require 'fileutils'
+require 'getoptlong'
+
+$debug = false
+
+# ---------------------------------------------------------------
+# Frontend parsing
+# ---------------------------------------------------------------
+
+def show_help ()
+	puts <<EOF
+[Usage]] qa
+
+-h, --help
+		show help
+
+-d, --dir <results dir>
+	specify director name to collect all qa data
+
+-s, --single <path>
+	specify qa command file path (both abs andrelative path)
+
+-r, --run <abs_path list file>
+	specify file with multiple command file abs_path
+
+-f, --find <qa tag>
+	find all test command file with specified tag
+
+-j, --core <num of CPU core>
+	specify num of CPU core for parallel qa
+
+-x, --debug
+EOF
+end
+
+if 0 == ARGV.length
+	show_help()
+	exit(0)
+end
+
+opts = GetoptLong.new(
+	[ '--help', '-h', GetoptLong::NO_ARGUMENT ],
+	[ '--dir', '-d', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--single', '-s', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--run', '-r', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--find', '-f', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--core', '-j', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--debug', '-x', GetoptLong::NO_ARGUMENT ],
+)
+
+qa_result_dir = nil
+single_cmd_path = nil
+cmd_list_path = nil
+tag = nil
+core = 1
+
+opts.each do |opt, arg|
+	case opt
+		when '--help'
+			show_help()
+		when '--dir'
+			qa_result_dir = arg
+		when '--single'
+			single_cmd_path = arg
+		when '--run'
+			cmd_list_path = arg
+		when '--find'
+			tag = arg
+		when '--core'
+			core = arg.to_i
+		when '--debug'
+			$debug = true
+	end
+end
+
+# ---------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------
+
+def call_system ( cmd )
+	success = system( cmd )
+	if nil == success
+		puts "[Error] system fail to execute command #{cmd}"
+		exit(1)
+	elsif false == success
+		puts "[Error] get error code #{$?.exitstatus} when child (PID=#{$?.pid}) execute system command #{cmd}"
+		exit(1)
+	end
+end
+
+def exec_single_cmd ( result_dir, path )
+	# check path exist
+	if !File.exist?( path )
+		puts "[Error] file #{path} not exist"
+		exit(1)
+	end
+
+	# change path to abs_path
+	abs_result_dir = File.realpath( result_dir )
+	abs_path = File.realpath( path )
+
+	# copy all data in qa dir to test_dir
+	abs_qa_dir = File.dirname( abs_path )
+	abs_test_dir = "#{abs_result_dir}#{abs_qa_dir}"
+	FileUtils.mkdir_p( abs_test_dir )
+	call_system( "cp -rf #{abs_qa_dir}/* #{abs_test_dir}" )
+	if $debug
+		puts "cp -rf #{abs_qa_dir}/* #{abs_test_dir}"
+	end
+
+	origin_pwd = Dir.pwd()
+	Dir.chdir( abs_test_dir )
+
+	# execute
+	shell = "bash"
+	cmd_file = File.basename( abs_path )
+	cmd = "#{shell} #{cmd_file}"
+	status = system( cmd )
+	call_system( cmd )
+	if $debug
+		puts "PWD='#{Dir.pwd}' run='#{cmd}'"
+	end
+
+	# diff qa results
+	fout = File.open( "#{abs_result_dir}/qa_report.txt", "a" )
+	fin = File.open( abs_path, "r" )
+	fout.puts "* #{abs_test_dir}"
+	golden_pattern = Regexp.new( /^\s*###QA_GOLDEN_FILE\s+(\S+)/ )
+	while !fin.eof
+		line = fin.readline.chop
+		if line =~ golden_pattern
+			golden_file = line.slice( golden_pattern, 1 )
+			if $debug
+				puts "diff #{golden_file} golden/#{golden_file}"
+			end
+			system( "diff -q #{golden_file} golden/#{golden_file}" )
+			if 0 == $?.exitstatus
+				fout.puts " + #{golden_file} = OK"
+			else
+				fout.puts " + #{golden_file} = FAIL"
+			end
+		end
+	end
+	fout.puts ""
+	fout.close
+	fin.close
+
+	Dir.chdir( origin_pwd )
+end
+
+if nil == qa_result_dir
+	qa_result_dir = Time.now.strftime("%Y%d%m_%H%M%S")
+end
+
+begin
+Dir.mkdir( qa_result_dir )
+rescue Errno::EEXIST => e
+	puts "[Warning] #{qa_result_dir} already exist, delete orignal directory"
+	call_system( "rm -rf #{qa_result_dir}" )
+	Dir.mkdir( qa_result_dir )
+else
+	nil
+end
+
+# run single qa
+if nil != single_cmd_path
+	exec_single_cmd( qa_result_dir, single_cmd_path )
+end
+
+# find qa tag to create qalist
+if nil != tag
+	fout = File.open( "search_#{tag}.list", "w" )
+	find_cmd = "find . -name 'run.cmd' | xargs grep -l '###QA_TAG #{tag}'"
+	if $debug
+		puts "#{find_cmd}"
+	end
+	IO.popen( find_cmd ) { |io|
+		while ( line = io.gets ) 
+			line.chop!
+			if nil != line
+				if $debug
+					puts "find tag #{tag} in cmd file ='#{File.realpath(line)}'"
+				end
+				fout.puts File.realpath( line )
+			end
+		end 
+	} 
+	fout.close
+end
+
+# run qa list
+cmd_list = []
+if nil != cmd_list_path
+	fin = File.open( cmd_list_path, "r" )
+	while !fin.eof
+		cmd = fin.readline.chop
+		cmd_list.push( cmd )
+	end
+	fin.close
+
+	for i in 0...cmd_list.size
+		cmd = cmd_list[i]
+		if $debug
+			puts "run #{cmd} ..."
+		end
+		printf( "\rRunning Status: %d/%d (%.1f%%)", i, cmd_list.size, i.to_f/cmd_list.size*100 )
+		exec_single_cmd( qa_result_dir, cmd )
+	end
+	printf( "\rRunning Status: %d/%d (%.1f%%)\n", cmd_list.size, cmd_list.size, 100 )
+end
+

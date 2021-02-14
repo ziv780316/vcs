@@ -1,0 +1,114 @@
+#!/usr/bin/ruby
+
+require 'getoptlong'
+
+$debug = false
+
+# ---------------------------------------------------------------
+# Frontend parsing
+# ---------------------------------------------------------------
+
+def show_help ()
+	puts <<EOF
+[Usage]] qa
+
+-h, --help
+		show help
+
+-i, --input <qa_report>
+	specify director name to collect all qa data
+
+-x, --debug
+EOF
+end
+
+if 0 == ARGV.length
+	show_help()
+	exit(0)
+end
+
+opts = GetoptLong.new(
+	[ '--help', '-h', GetoptLong::NO_ARGUMENT ],
+	[ '--input', '-i', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--debug', '-x', GetoptLong::NO_ARGUMENT ],
+)
+
+qa_report = nil
+
+opts.each do |opt, arg|
+	case opt
+		when '--help'
+			show_help()
+		when '--input'
+			qa_report = arg
+		when '--debug'
+			$debug = true
+	end
+end
+
+# ---------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------
+
+def call_system ( cmd )
+	success = system( cmd )
+	if nil == success
+		puts "[Error] system fail to execute command #{cmd}"
+		exit(1)
+	elsif false == success
+		puts "[Error] get error code #{$?.exitstatus} when child (PID=#{$?.pid}) execute system command #{cmd}"
+		exit(1)
+	end
+end
+
+current_cmd = nil
+current_test = nil
+fin = File.open( qa_report, "r" )
+while !fin.eof
+	line = fin.readline.chop
+	cmd_pattern = Regexp.new( /^\s*\*\s*cmd\s*=\s*(\S+)/ )
+	if line =~ cmd_pattern
+		current_cmd = line.slice( cmd_pattern, 1 )
+	end
+	test_pattern = Regexp.new( /^\s*->\s*qa\s*=\s*(\S+)/ )
+	if line =~ test_pattern
+		current_test = line.slice( test_pattern, 1 )
+	end
+
+	diff_pattern = Regexp.new( /^\s*\+\s*(\S+)\s*=\s*FAIL/ )
+	if line =~ diff_pattern
+		check_file = line.slice( diff_pattern, 1 )
+		golden_file = File.dirname( current_cmd) + "/golden/#{check_file}"
+		qa_file = "#{current_test}/#{check_file}"
+		if $debug
+			puts "#{qa_file} FAIL"
+		end
+
+		system( "diff -q #{golden_file} #{qa_file} > /dev/null" )
+		if 0 == $?.exitstatus
+			puts "--------------------------------------------------------------"
+			puts golden_file
+			puts qa_file
+			puts "already update"
+			next
+		end
+
+		# query user
+		puts "--------------------------------------------------------------"
+		while true
+			puts golden_file
+			puts qa_file
+			printf( "vimdiff[y] ignore[n] copy[c]? " )
+			user_input = STDIN.gets.chop
+			if user_input == "y" or user_input == ""
+				call_system( "vimdiff #{golden_file} #{qa_file}" )
+			elsif user_input == "c"
+				call_system( "cp -f #{qa_file} #{golden_file}" )
+				break
+			elsif user_input == "n"
+				break
+			end
+		end
+	end
+end
+
