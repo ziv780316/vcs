@@ -28,6 +28,9 @@ def show_help ()
 -f, --find <qa tag>
 	find all test command file with specified tag
 
+-t, --find_root_dir <dir name>
+	find root dir
+
 -j, --core <num of CPU core>
 	specify num of CPU core for parallel qa
 
@@ -47,6 +50,7 @@ opts = GetoptLong.new(
 	[ '--run', '-r', GetoptLong::REQUIRED_ARGUMENT ],
 	[ '--find', '-f', GetoptLong::REQUIRED_ARGUMENT ],
 	[ '--core', '-j', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--root', '-t', GetoptLong::REQUIRED_ARGUMENT ],
 	[ '--debug', '-x', GetoptLong::NO_ARGUMENT ],
 )
 
@@ -54,6 +58,7 @@ qa_result_dir = nil
 single_cmd_path = nil
 cmd_list_path = nil
 tag = nil
+find_root_dir = "."
 core = 1
 
 opts.each do |opt, arg|
@@ -68,6 +73,8 @@ opts.each do |opt, arg|
 			cmd_list_path = arg
 		when '--find'
 			tag = arg
+		when '--root'
+			find_root_dir = arg
 		when '--core'
 			core = arg.to_i
 		when '--debug'
@@ -160,22 +167,24 @@ def exec_single_cmd ( result_dir, path )
 	return result_diff
 end
 
-if nil == qa_result_dir
-	qa_result_dir = Time.now.strftime("%Y%m%d_%H%M%S")
-end
-
-begin
-Dir.mkdir( qa_result_dir )
-rescue Errno::EEXIST => e
-	puts "[Warning] #{qa_result_dir} already exist, delete orignal directory"
-	call_system( "rm -rf #{qa_result_dir}" )
-	Dir.mkdir( qa_result_dir )
-else
-	nil
+def overwrite_create_dir ( dir_name )
+	begin
+	Dir.mkdir( dir_name )
+	rescue Errno::EEXIST => e
+		puts "[Warning] #{dir_name} already exist, delete orignal directory"
+		call_system( "rm -rf #{dir_name}" )
+		Dir.mkdir( dir_name )
+	else
+		nil
+	end
 end
 
 # run single qa
 if nil != single_cmd_path
+	if nil == qa_result_dir
+		qa_result_dir = Time.now.strftime("%Y%m%d_%H%M%S")
+	end
+
 	result_diff = exec_single_cmd( qa_result_dir, single_cmd_path )
 	if result_diff
 		puts "QA=DIFF"
@@ -191,6 +200,9 @@ if nil != tag
 	if $debug
 		puts "#{find_cmd}"
 	end
+
+	Dir.chdir( find_root_dir )
+
 	IO.popen( find_cmd ) { |io|
 		while ( line = io.gets ) 
 			line.chop!
@@ -210,6 +222,10 @@ cmd_list = []
 fail_cnt = 0
 pass_cnt = 0
 if nil != cmd_list_path
+	if nil == qa_result_dir
+		qa_result_dir = Time.now.strftime("%Y%m%d_%H%M%S")
+	end
+
 	fin = File.open( cmd_list_path, "r" )
 	while !fin.eof
 		cmd = fin.readline.chop
