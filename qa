@@ -161,7 +161,7 @@ def exec_single_cmd ( result_dir, path )
 end
 
 if nil == qa_result_dir
-	qa_result_dir = Time.now.strftime("%Y%d%m_%H%M%S")
+	qa_result_dir = Time.now.strftime("%Y%m%d_%H%M%S")
 end
 
 begin
