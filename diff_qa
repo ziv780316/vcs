@@ -13,10 +13,19 @@ def show_help ()
 [Usage]] qa
 
 -h, --help
-		show help
+	show help
 
 -i, --input <qa_report>
 	specify director name to collect all qa data
+
+-f, --fail 
+	list all fail file
+
+-g, --golden 
+	list all golden need update
+
+-a, --update_all 
+	update all fail case to golden
 
 -x, --debug
 EOF
@@ -30,10 +39,16 @@ end
 opts = GetoptLong.new(
 	[ '--help', '-h', GetoptLong::NO_ARGUMENT ],
 	[ '--input', '-i', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--fail', '-f', GetoptLong::NO_ARGUMENT ],
+	[ '--golden', '-g', GetoptLong::NO_ARGUMENT ],
+	[ '--update_all', '-a', GetoptLong::NO_ARGUMENT ],
 	[ '--debug', '-x', GetoptLong::NO_ARGUMENT ],
 )
 
 qa_report = nil
+list_fail_only = false
+list_golden_only = false
+update_all_fail_case = false
 
 opts.each do |opt, arg|
 	case opt
@@ -41,6 +56,12 @@ opts.each do |opt, arg|
 			show_help()
 		when '--input'
 			qa_report = arg
+		when '--fail'
+			list_fail_only = true
+		when '--golden'
+			list_golden_only = true
+		when '--update_all'
+			update_all_fail_case = true
 		when '--debug'
 			$debug = true
 	end
@@ -61,9 +82,22 @@ def call_system ( cmd )
 	end
 end
 
+class TestCase
+	@test_abs_path
+	@golden_abs_path
+	def initialize( test_abs_path, golden_abs_path )
+		@test_abs_path = test_abs_path
+		@golden_abs_path = golden_abs_path
+	end
+
+	attr_reader :test_abs_path, :golden_abs_path
+end
+
 current_cmd = nil
 current_test = nil
 fin = File.open( qa_report, "r" )
+update_case_tuple_list = []
+fail_list = []
 while !fin.eof
 	line = fin.readline.chop
 	cmd_pattern = Regexp.new( /^\s*\*\s*cmd\s*=\s*(\S+)/ )
@@ -78,37 +112,64 @@ while !fin.eof
 	diff_pattern = Regexp.new( /^\s*\+\s*(\S+)\s*=\s*FAIL/ )
 	if line =~ diff_pattern
 		check_file = line.slice( diff_pattern, 1 )
-		golden_file = File.dirname( current_cmd) + "/golden/#{check_file}"
+		golden_file = File.dirname( current_cmd ) + "/golden/#{check_file}"
 		qa_file = "#{current_test}/#{check_file}"
 		if $debug
 			puts "#{qa_file} FAIL"
 		end
 
-		system( "diff -q #{golden_file} #{qa_file} > /dev/null" )
-		if 0 == $?.exitstatus
-			puts "--------------------------------------------------------------"
-			puts golden_file
-			puts qa_file
-			puts "already update"
-			next
-		end
+		fail_list.push( TestCase.new( qa_file, golden_file ) )
 
-		# query user
-		puts "--------------------------------------------------------------"
-		while true
-			puts golden_file
-			puts qa_file
-			printf( "vimdiff[y] ignore[n] copy[c]? " )
-			user_input = STDIN.gets.chop
-			if user_input == "y" or user_input == ""
-				call_system( "vimdiff #{golden_file} #{qa_file}" )
-			elsif user_input == "c"
-				call_system( "cp -f #{qa_file} #{golden_file}" )
-				break
-			elsif user_input == "n"
-				break
+		if list_fail_only or list_golden_only or update_all_fail_case
+			nil
+		else
+			already_update = false
+			system( "diff -q #{golden_file} #{qa_file} > /dev/null" )
+			if 0 == $?.exitstatus
+				puts "--------------------------------------------------------------"
+				puts golden_file
+				puts qa_file
+				puts "already update"
+				already_update = true
+				next
+			end
+
+			# query user for diff or update
+			puts "--------------------------------------------------------------"
+			while true
+				puts golden_file
+				puts qa_file
+				printf( "vimdiff[y] ignore[n] copy[c]? " )
+				user_input = STDIN.gets.chop
+				if user_input == "y" or user_input == ""
+					call_system( "vimdiff #{golden_file} #{qa_file}" )
+					break
+				elsif user_input == "c"
+					call_system( "cp -f #{qa_file} #{golden_file}" )
+					break
+				elsif user_input == "n"
+					break
+				end
 			end
 		end
 	end
 end
 
+if list_fail_only
+	for i in 0...fail_list.size
+		puts fail_list[i].test_abs_path
+	end
+end
+
+if list_golden_only
+	for i in 0...fail_list.size
+		puts fail_list[i].golden_abs_path
+	end
+end
+
+if update_all_fail_case
+	for i in 0...fail_list.size
+		puts "cp -f #{fail_list[i].test_abs_path} #{fail_list[i].golden_abs_path} ..."
+		call_system( "cp -f #{fail_list[i].test_abs_path} #{fail_list[i].golden_abs_path}" )
+	end
+end

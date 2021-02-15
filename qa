@@ -14,7 +14,7 @@ def show_help ()
 [Usage]] qa
 
 -h, --help
-		show help
+	show help
 
 -d, --dir <results dir>
 	specify director name to collect all qa data
@@ -124,9 +124,11 @@ def exec_single_cmd ( result_dir, path )
 	end
 
 	# diff qa results
+	result_diff = false
 	fout = File.open( "#{abs_result_dir}/qa_report.txt", "a" )
 	fin = File.open( abs_path, "r" )
-	fout.puts "* #{abs_test_dir}"
+	fout.puts "* cmd = #{abs_path}"
+	fout.puts "-> qa = #{abs_test_dir}"
 	golden_pattern = Regexp.new( /^\s*###QA_GOLDEN_FILE\s+(\S+)/ )
 	while !fin.eof
 		line = fin.readline.chop
@@ -135,19 +137,27 @@ def exec_single_cmd ( result_dir, path )
 			if $debug
 				puts "diff #{golden_file} golden/#{golden_file}"
 			end
-			system( "diff -q #{golden_file} golden/#{golden_file}" )
+			system( "diff -q #{golden_file} golden/#{golden_file} > /dev/null" )
 			if 0 == $?.exitstatus
 				fout.puts " + #{golden_file} = OK"
 			else
+				result_diff = true
 				fout.puts " + #{golden_file} = FAIL"
 			end
 		end
+	end
+	if result_diff 
+		fout.puts "-> #{abs_test_dir} QA = DIFF"
+	else
+		fout.puts "-> #{abs_test_dir} QA = PASS"
 	end
 	fout.puts ""
 	fout.close
 	fin.close
 
 	Dir.chdir( origin_pwd )
+
+	return result_diff
 end
 
 if nil == qa_result_dir
@@ -166,7 +176,12 @@ end
 
 # run single qa
 if nil != single_cmd_path
-	exec_single_cmd( qa_result_dir, single_cmd_path )
+	result_diff = exec_single_cmd( qa_result_dir, single_cmd_path )
+	if result_diff
+		puts "QA=DIFF"
+	else
+		puts "QA=PASS"
+	end
 end
 
 # find qa tag to create qalist
@@ -192,6 +207,8 @@ end
 
 # run qa list
 cmd_list = []
+fail_cnt = 0
+pass_cnt = 0
 if nil != cmd_list_path
 	fin = File.open( cmd_list_path, "r" )
 	while !fin.eof
@@ -205,9 +222,20 @@ if nil != cmd_list_path
 		if $debug
 			puts "run #{cmd} ..."
 		end
-		printf( "\rRunning Status: %d/%d (%.1f%%)", i, cmd_list.size, i.to_f/cmd_list.size*100 )
-		exec_single_cmd( qa_result_dir, cmd )
+		printf( "\rRunning Status: %d/%d (%.1f%%), fail=%d (%.1f%%)", i, cmd_list.size, i.to_f/cmd_list.size*100, fail_cnt, fail_cnt.to_f/cmd_list.size*100 )
+		result_diff = exec_single_cmd( qa_result_dir, cmd )
+		if result_diff 
+			fail_cnt += 1
+		else
+			pass_cnt +=1 
+		end
 	end
-	printf( "\rRunning Status: %d/%d (%.1f%%)\n", cmd_list.size, cmd_list.size, 100 )
+	printf( "\rRunning Status: %d/%d (%.1f%%), fail=%d/%d (%.1f%%)\n", cmd_list.size, cmd_list.size, 100, fail_cnt, cmd_list.size, fail_cnt.to_f/cmd_list.size*100 )
+
+	fout = File.open( "#{qa_result_dir}/qa_report.txt", "a" )
+	fout.puts "* Summary of Total #{cmd_list.size} QA:"
+	fout.printf( " + PASS = #{pass_cnt} (%.1f%%)\n", pass_cnt.to_f/cmd_list.size*100 )
+	fout.printf( " + FAIL = #{fail_cnt} (%.1f%%)\n", fail_cnt.to_f/cmd_list.size*100 )
+	fout.close 
 end
 
