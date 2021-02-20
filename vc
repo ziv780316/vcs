@@ -6,6 +6,7 @@ require 'socket'
 # VCS global setting
 # ---------------------------------------------------------------
 
+$pwd = Dir.pwd()
 $debug = false
 $vcs_tool = "git"
 $git_remote_branch = "origin/master"
@@ -281,8 +282,7 @@ def delete_files ( files )
 				puts "[Warning] file #{file} does not exist"
 				next
 			end
-			puts "delete #{file}"
-			cmd = "git rm -- #{file}"
+			cmd = "git rm -f -- #{file}"
 			call_system( cmd )
 		end
 	end
@@ -392,6 +392,12 @@ def diff_file ( file )
 		puts "diff #{file} ..."
 		cmd = "git difftool --no-prompt --tool=vimdiff #{$git_remote_branch} -- #{file}"
 		call_system_wo_exit_check( cmd )
+	end
+end
+
+def diff_files ( files )
+	for file in files 
+		diff_file( file )
 	end
 end
 
@@ -592,11 +598,14 @@ for opt in option_paris
 			get_missing_all_files()
 
 		when '-diff'
-			if 0 == opt.argument.size
-				diff_file( opt.argument[0] )
-			elsif 3 == opt.argument.size
-				diff_file_two_version( opt.argument[0], opt.argument[1], opt.argument[2] )
+			diff_files( opt.argument )
+
+		when '-diff_version'
+			if 3 != opt.argument.size
+				puts "[Error] syntax error --> please use '-diff_version <file> <commit_id1> <commit_id2> ...'"
+				exit(1)
 			end
+			diff_file_two_version( opt.argument[0], opt.argument[1], opt.argument[2] )
 
 		when '-diff_all'
 			diff_all_confict_files()
