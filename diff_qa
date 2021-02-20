@@ -10,7 +10,7 @@ $debug = false
 
 def show_help ()
 	puts <<EOF
-[Usage]] qa
+[Usage]] diff_qa
 
 -h, --help
 	show help
