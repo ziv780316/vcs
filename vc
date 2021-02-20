@@ -56,6 +56,48 @@ def show_help ()
 -log <file1> <file2> ...
 	show file check-in history
 
+-status
+-status <file1> <file2> ...
+	show specified file status or all file under current working directory
+
+-list_diff
+	show all diff files under current working directory
+
+-list_missing
+	show all missing files
+
+-list_add
+	show all add files
+	
+-diff <file>
+-diff <file> <commit_id1> <commit_id2>
+	use vimdiff to diff files with remote or specified version
+
+-add <file1> <file2> ...
+	add new or modified file to commit
+
+-cancel <file1> <file2> ...
+	cancel added file
+
+-delete <file1> <file2> ...
+	delete file 
+
+-get <file> <commit_id1> <commit_id2> ...
+	download multiple file from remote with specified commit id 
+
+-get_missing
+	download all missing file from remote
+
+-sync
+-sync <file1> <file2> ...
+	sync specified file or all file
+
+-fetch
+	fetch remote data to local (cache)
+	
+-commit
+	commit with change log
+
 -debug
 EOF
 end
@@ -543,7 +585,7 @@ for opt in option_paris
 				sync_files( opt.argument )
 			end
 
-		when '-missing'
+		when '-list_missing'
 			show_missing_files()
 
 		when '-get_missing'
