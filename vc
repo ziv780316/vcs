@@ -250,6 +250,8 @@ def check_file_status ( files )
 						puts "#{file} => modified"
 					elsif line =~ /^\s*D/
 						puts "#{file} => deleted"
+					elsif line =~ /^\s*A/
+						puts "#{file} => first add"
 					elsif line =~ /^\s*\?\?/
 						puts "#{file} => untracked"
 					else
@@ -488,6 +490,21 @@ def get_all_file_under_dir ( dirname )
 	return files
 end
 
+def get_all_file_recursive ( dirname )
+	find_cmd = "find #{dirname} -type f"
+	files = []
+	IO.popen( find_cmd ) { |io|
+		while ( line = io.gets ) 
+			line.chop!
+			if nil != line
+				line.gsub!( /^\.\//, '' )
+				files.push( line )
+			end
+		end 
+	} 
+	return files
+end
+
 def commit_with_changelog ()
 	user_name = nil
 	cmd = "git config --get user.name"
@@ -574,6 +591,9 @@ for opt in option_paris
 			else
 				check_file_status( opt.argument )
 			end
+
+		when '-status_all'
+			check_file_status( get_all_file_recursive(".") )
 
 		when '-add'
 			add_files( opt.argument )
