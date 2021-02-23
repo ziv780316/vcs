@@ -21,16 +21,25 @@ $show_detail= false
 class OptionArgumentPair
 	@option
 	@argument 
+	@no_option
 	@no_argument
 	def initialize( option, argument )
 		@option = option
 		@argument = argument
+		@no_option = ((nil == option) ? true : false)
 		@no_argument = ((0 == argument.size) ? true : false)
 	end
 
 	def show()
+		if @no_option and @no_argument
+			return
+		end
+
 		puts "-------------------------"
-		if @no_argument
+		if @no_option
+			puts "option = (N/A)"
+			puts "non-option argument = #{@argument[0]}"
+		elsif @no_argument
 			puts "option = #{@option}"
 			puts "require argument = no"
 		else
@@ -44,7 +53,68 @@ class OptionArgumentPair
 		puts "-------------------------"
 	end
 
-	attr_reader :option, :argument, :no_argument
+	def self.parse_from_argv ( argv )
+		option_paris = []
+
+		debug_cmd_parse = ENV["VC_DEBUG_CMD_PARSE"]
+		if debug_cmd_parse
+			for i in 0...argv.length
+				puts "argv#{i + 1} = #{argv[i]}"
+			end
+		end
+
+		i = 0
+		while true
+			if i == argv.length	
+				break
+			end
+
+			option = nil
+			argument = []
+			if nil == (argv[i] =~ /^\s*-\S+/)
+				# non-argv option
+				argument.push( argv[i] )
+			else
+				option = argv[i]
+			end
+
+			if nil == option
+				if debug_cmd_parse
+					puts "[DEBUG] parse a non-option arg=#{argument[0]}"
+				end
+			else
+				if debug_cmd_parse
+					puts "[DEBUG] parsing option=#{option} args ..."
+				end
+				while i + 1 < argv.length
+					arg = argv[i + 1]
+					if arg =~ /^\s*-\S+/
+						# this toke is not arg, it's a option
+						break
+					else
+						if debug_cmd_parse
+							puts "[DEBUG] arg#{argument.size + 1} = #{arg}"
+						end
+
+						argument.push( arg )
+						i += 1
+					end
+				end
+
+				if debug_cmd_parse and 0 == argument.size
+					puts "[DEBUG] there is no argument"
+				end
+			end
+
+			option_paris.push( OptionArgumentPair.new(option, argument) )
+
+			i += 1
+		end
+
+		return option_paris
+	end
+
+	attr_reader :option, :argument, :no_option, :no_argument
 end
 
 def show_help ()
@@ -108,53 +178,7 @@ if 0 == ARGV.length
 	exit(0)
 end
 
-debug_cmd_parse = ENV["VC_DEBUG_CMD_PARSE"]
-if debug_cmd_parse
-	for i in 0...ARGV.length
-		puts "argv#{i + 1} = #{ARGV[i]}"
-	end
-end
-
-option_paris = []
-i = 0
-while true
-	if i == ARGV.length	
-		break
-	end
-
-	option = ARGV[i]
-	argument = []
-	if nil == (option =~ /^\s*-\S+/)
-		puts "[Error] command line syntax error --> option syntax error (parse=#{option})"
-		exit(1)
-	end
-
-	if debug_cmd_parse
-		puts "[DEBUG] parsing option=#{option} args ..."
-	end
-	while i + 1 < ARGV.length
-		arg = ARGV[i + 1]
-		if arg =~ /^\s*-\S+/
-			# this toke is not arg, it's a option
-			break
-		else
-			if debug_cmd_parse
-				puts "[DEBUG] arg#{argument.size + 1} = #{arg}"
-			end
-
-			argument.push( arg )
-			i += 1
-		end
-	end
-
-	if debug_cmd_parse and 0 == argument.size
-		puts "[DEBUG] there is no argument"
-	end
-
-	option_paris.push( OptionArgumentPair.new(option, argument) )
-
-	i += 1
-end
+option_paris = OptionArgumentPair.parse_from_argv( ARGV )
 
 # pre-process global setting
 for opt in option_paris
@@ -647,5 +671,11 @@ for opt in option_paris
 
 		when '-commit'
 			commit_with_changelog()
+
+		when nil, '-h', '-help', '-debug', '-detail', '-vcs_tool'
+			nil
+
+		else
+			puts "[Warning] unknown option = #{opt.option}"
 	end
 end
