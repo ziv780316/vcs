@@ -179,10 +179,15 @@ def overwrite_create_dir ( dir_name )
 	end
 end
 
+if qa_result_dir
+	overwrite_create_dir( qa_result_dir )
+end
+
 # run single qa
 if nil != single_cmd_path
 	if nil == qa_result_dir
 		qa_result_dir = Time.now.strftime("%Y%m%d_%H%M%S")
+		overwrite_create_dir( qa_result_dir )
 	end
 
 	result_diff = exec_single_cmd( qa_result_dir, single_cmd_path )
@@ -224,6 +229,7 @@ pass_cnt = 0
 if nil != cmd_list_path
 	if nil == qa_result_dir
 		qa_result_dir = Time.now.strftime("%Y%m%d_%H%M%S")
+		overwrite_create_dir( qa_result_dir )
 	end
 
 	fin = File.open( cmd_list_path, "r" )
