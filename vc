@@ -163,7 +163,7 @@ def show_help ()
 -sync <file1> <file2> ...
 	sync specified file or all file
 
--fetch
+-fetch_remote
 	fetch remote data to local (cache)
 	
 -commit
@@ -530,6 +530,21 @@ def get_all_file_recursive ( dirname )
 end
 
 def commit_with_changelog ()
+	work_root_path = ENV["DEVELOP_ROOT_DIR"]
+	if nil == work_root_path
+		puts "[Error] there is no env var 'DEVELOP_ROOT_DIR' defined"
+		exit(1)
+	end
+	token_file = "#{work_root_path}/token"
+	if not File.exist?( token_file )
+		puts "[Error] token file #{token_file} does not exist"
+		exit(1)
+	end
+	fin = File.open( token_file, "r" )
+	token = fin.gets.chop
+	url_mix_token = $git_remote_machine_host
+	url_mix_token = $git_remote_machine_host.gsub( /:\/\//, "://#{token}@" )
+
 	user_name = nil
 	cmd = "git config --get user.name"
 	IO.popen( cmd ) { |io|
@@ -565,12 +580,22 @@ def commit_with_changelog ()
 
 	call_system( "vim #{temp_file}" )
 
-	print "[confirm] commit (Y/N) ? "
-	user_input = STDIN.gets.chop
-	if user_input == "y" 
-		puts "\ncommit to remote_branch '#{$git_remote_branch}' (host=#{$git_remote_machine_host}) ..."
-		call_system( "git commit -F #{temp_file}" )
-		call_system( "git push origin master" )
+	use_token = true
+	if use_token 
+		print "[confirm] commit to #{url_mix_token} (Y/N) ? "
+		user_input = STDIN.gets.chop
+		if user_input.downcase == "y" 
+			call_system( "git push #{url_mix_token}" )
+		end
+	else
+		# old git-hub check in flow
+		print "[confirm] commit (Y/N) ? "
+		user_input = STDIN.gets.chop
+		if user_input.downcase == "y" 
+			puts "\ncommit to remote_branch '#{$git_remote_branch}' (host=#{$git_remote_machine_host}) ..."
+			call_system( "git commit -F #{temp_file}" )
+			call_system( "git push origin master" )
+		end
 	end
 
 	File.delete( temp_file )
