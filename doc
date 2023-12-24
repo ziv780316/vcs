@@ -1,0 +1,10 @@
+# create a new repository
+
+# 1. website
+create dir xxx in github
+
+# 2. local
+mkdir xxx
+cd xxx
+git init
+git remote add origin https://github.com/ziv780316/xxx.git
